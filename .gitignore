@@ -1,0 +1,13 @@
+.env
+
+pub_key_test.pub
+pub_key_prod.pub
+
+node_modules
+build
+
+_td_database
+_td_files
+
+src/logs
+db/*
