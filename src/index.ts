@@ -1,8 +1,8 @@
-const path = require('node:path');
+import path from 'path'
 import Datastore from 'nedb-promises'
 
-const { Client } = require('tdl')
-const { TDLib } = require('tdl-tdlib-addon')
+import { Client } from 'tdl'
+import { TDLib } from 'tdl-tdlib-addon'
 import { Chat , Messages, Message} from "tdlib-types"
 import config from './config'
 
@@ -82,7 +82,7 @@ async function getChatLoop(chatId:number, i:number, chatCollection:Datastore<Mes
   
   return new Promise((resolve) => {
     getChat(chatId, fromMessageId, chatCollection)
-      .then((messageCount: Number) => {
+      .then((messageCount: number | void) => {
         if (messageCount === 0 || i === 0) return resolve(i)
         setTimeout(() => {
           getChatLoop(chatId, i - 1, chatCollection).then(
