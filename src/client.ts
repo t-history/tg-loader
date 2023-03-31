@@ -10,5 +10,4 @@ const client = new Client(tdl, {
   apiHash: config.apiHash
 })
 
-export default client;
-
+export default client
