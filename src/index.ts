@@ -3,26 +3,14 @@ import Datastore from 'nedb-promises'
 
 const { Client } = require('tdl')
 const { TDLib } = require('tdl-tdlib-addon')
-import { Chat , Messages, Message} from "tdlib-types";
+import { Chat , Messages, Message} from "tdlib-types"
+import config from './config'
 
-require('dotenv').config()
-
-const testChatId:number | undefined = process.env.TEST_CHAT_ID ? parseInt(process.env.TEST_CHAT_ID) : undefined
-const testMessageId:number | undefined = process.env.TEST_MESSAGE_ID ? parseInt(process.env.TEST_MESSAGE_ID) : undefined
-const apiDelay:number = process.env.API_DELAY ? parseInt(process.env.API_DELAY) : 1200
-const iterationForChat:number = process.env.ITERATION_FOR_CHAT ? parseInt(process.env.ITERATION_FOR_CHAT) : 50
-
-const apiId:number | undefined = process.env.API_ID ? parseInt(process.env.API_ID) : undefined
-const apiHash:string | undefined = process.env.API_HASH
 const tdl = new TDLib(path.join(__dirname, 'bin/libtdjson.dylib'))
 
-if (!apiId || !apiHash) {
-  throw new Error('API_ID or API_HASH is not set')
-}
-
 const client = new Client(tdl, {
-  apiId,
-  apiHash
+  apiId: config.apiId,
+  apiHash: config.apiHash
 })
 
 interface CollectionObject {
@@ -90,7 +78,7 @@ async function getChatLoop(chatId:number, i:number, chatCollection:Datastore<Mes
     .findOne({})
     .sort({ id: 1 })
 
-  const fromMessageId = doc ? Number(doc._id) : testMessageId || 0
+  const fromMessageId = doc ? Number(doc._id) : config.testMessageId || 0
   
   return new Promise((resolve) => {
     getChat(chatId, fromMessageId, chatCollection)
@@ -100,7 +88,7 @@ async function getChatLoop(chatId:number, i:number, chatCollection:Datastore<Mes
           getChatLoop(chatId, i - 1, chatCollection).then(
             (value) => resolve(value)
           )
-        }, apiDelay)
+        }, config.apiDelay)
       })
   })
 }
@@ -121,7 +109,7 @@ async function processChats(chats: CollectionObject[], chatsCollection:Datastore
     const chatCollection = await Datastore.create({ filename, autoload: true });
     
     console.log(`Chat ID: ${_id}   ${i + 1}/${chats.length}`);
-    const res = await getChatLoop(_id, iterationForChat, chatCollection);
+    const res = await getChatLoop(_id, config.iterationForChat, chatCollection);
     console.log(`Chat ID: ${_id} done. ${res} iterations`);
   }
 }
