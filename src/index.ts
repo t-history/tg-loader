@@ -1,5 +1,6 @@
 import path from 'path'
 import Datastore from 'nedb-promises'
+import ProgressBar from 'progress'
 
 import { Chat , Messages, Message} from "tdlib-types"
 import config from './config'
@@ -36,7 +37,7 @@ async function getChats(chatsCollection:Datastore<Chat>) {
 }
 
 function getChat(chatId:number, fromMessageId:number, chatCollection:Datastore<Message & CollectionObject>) {
-  console.log('Getting chat')
+  // console.log('Getting chat')
 
   return client.invoke({
     _: 'getChatHistory',
@@ -77,33 +78,47 @@ async function getChatLoop(chatId:number, i:number, chatCollection:Datastore<Mes
       .then((messageCount: number | void) => {
         if (messageCount === 0 || i === 0) return resolve(i)
         setTimeout(() => {
-          getChatLoop(chatId, i - 1, chatCollection).then(
-            (value) => resolve(value)
-          )
+          getChatLoop(chatId, i - 1, chatCollection)
+            .then(
+              (value) => resolve(value)
+            ).catch((err: Error) => {
+              console.log(err)
+            })
         }, config.apiDelay)
+      })
+      .catch((err: Error) => {
+        console.log(err)
       })
   })
 }
 
 async function processChats(chats: CollectionObject[], chatsCollection:Datastore<Chat>) {
 
+  const barTemplate = 'Processing chat :current/:total [:bar:percent] Chat ID: :id'
+  const bar = new ProgressBar(barTemplate, {
+    total: chats.length,
+    width: 30
+  })
+
   for (let i = 0; i < chats.length; i++) {
+    
     const chat = chats[i];
     const _id = Number(chat._id);
+    
+    bar.tick({ id: _id, current: i + 1 })
 
     const chatInfo = await getChatInfo(_id, chatsCollection)
     if (chatInfo.type._ !== "chatTypePrivate") {
-      console.log(`Chat ID: ${_id} is not private. Skipping`)
       continue
     }
     
     const filename = path.join(__dirname, `../db/chats/${_id}.db`)
     const chatCollection = await Datastore.create({ filename, autoload: true });
-    
-    console.log(`Chat ID: ${_id}   ${i + 1}/${chats.length}`);
+
     const res = await getChatLoop(_id, config.iterationForChat, chatCollection);
-    console.log(`Chat ID: ${_id} done. ${res} iterations`);
   }
+
+  bar.terminate();
 }
 
 async function getChatInfo(chatId:number, chatsCollection:Datastore<Chat & CollectionObject>) {
@@ -113,7 +128,6 @@ async function getChatInfo(chatId:number, chatsCollection:Datastore<Chat & Colle
   })
 
   const res = await chatsCollection.update({ _id: Number(chat.id) }, chat)
-  console.log(res)
 
   return chat
 }
