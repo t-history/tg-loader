@@ -14,7 +14,7 @@ interface CollectionObject {
 async function insertIfNotExists<T extends CollectionObject> (collection: Datastore<T>, record: T): Promise<void> {
   const doc = await collection.findOne({ _id: record._id })
 
-  if (doc == null) {
+  if (doc === null) {
     collection
       .insert(record)
       .catch((err) => { console.log(err) })
@@ -27,10 +27,10 @@ async function getChats (chatsCollection: Datastore<Chat>): Promise<CollectionOb
     chat_list: { _: 'chatListMain' },
     limit: 4000
   })
-  const chatIds = chats.chat_ids.map((id: number) => Object({ _id: id }))
+  const chatIds = chats.chat_ids.map((id: number) => Object({ _id: Number(id) }))
 
   chatIds.forEach((chat: Chat & CollectionObject) => {
-    insertIfNotExists(chatsCollection, chat)
+    chatsCollection.update({ _id: chat._id }, chat)
       .catch((err) => { console.log(err) })
   })
 
@@ -123,7 +123,8 @@ async function getChatInfo (chatId: number, chatsCollection: Datastore<Chat & Co
     chat_id: chatId
   })
 
-  await chatsCollection.update({ _id: Number(chat.id) }, chat)
+  const id = Number(chat.id)
+  await chatsCollection.update({ _id: id }, chat)
 
   return chat
 }
