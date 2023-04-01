@@ -11,7 +11,7 @@ interface LMessage extends Message {
 
 interface ChatHistory {
   chatId: number
-  chatCollection: Datastore<LMessage>
+  chatHistoryCollection: Datastore<LMessage>
   fromMessageId: number
   client: Client
 }
@@ -22,7 +22,7 @@ class ChatHistory {
 
     this.client = client
     this.chatId = chatId
-    this.chatCollection = Datastore.create({ filename, autoload: true })
+    this.chatHistoryCollection = Datastore.create({ filename, autoload: true })
   }
 
   async writeMassageToDb (message: Message): Promise<void> {
@@ -31,16 +31,16 @@ class ChatHistory {
       _id: message.id
     }
 
-    const doc = this.chatCollection.findOne({ _id: messageWithId._id })
+    const doc = this.chatHistoryCollection.findOne({ _id: messageWithId._id })
 
     if (doc === null) {
-      await this.chatCollection.insert(message)
+      await this.chatHistoryCollection.insert(message)
     } else {
       // TODO: update message if it's changed
     }
   }
 
-  async getMessageChunk (fromMessageId: number): Promise<number | null> {
+  async fetchMessageChunk (fromMessageId: number): Promise<number | null> {
     const messageChunk: Messages = await this.client.invoke({
       _: 'getChatHistory',
       chat_id: this.chatId,
@@ -53,8 +53,6 @@ class ChatHistory {
     if (messageChunk.total_count === 0) {
       return null
     }
-
-    console.log('countChunk', messageChunk.total_count)
 
     const messages = messageChunk.messages
     for await (const message of messages) {
@@ -70,27 +68,27 @@ class ChatHistory {
     return minMessage.id
   }
 
-  async getOldestMessage (): Promise<LMessage | null> {
-    const oldestMessage = await this.chatCollection
+  async findOldestMessage (): Promise<LMessage | null> {
+    const oldestMessage = await this.chatHistoryCollection
       .findOne({})
       .sort({ id: 1 })
 
     return oldestMessage
   }
 
-  async getOldestMessageId (): Promise<number | null> {
-    const oldestMessage = await this.getOldestMessage()
+  async findOldestMessageId (): Promise<number | null> {
+    const oldestMessage = await this.findOldestMessage()
 
     return oldestMessage?._id ?? null
   }
 
-  async getChatHistory (remainingIterations: number, fromMessageId?: number): Promise<void> {
+  async fetchChatHistory (remainingIterations: number, fromMessageId?: number): Promise<void> {
     if (remainingIterations === 0) return
 
-    fromMessageId = fromMessageId ?? await this.getOldestMessageId() ?? 0
+    fromMessageId = fromMessageId ?? await this.findOldestMessageId() ?? 0
 
     for (let i = 0; i < remainingIterations; i++) {
-      const minMessageId = await this.getMessageChunk(fromMessageId)
+      const minMessageId = await this.fetchMessageChunk(fromMessageId)
 
       if (minMessageId == null) break
       fromMessageId = minMessageId
