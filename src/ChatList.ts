@@ -57,17 +57,14 @@ class ChatList {
   async fetchChats (): Promise<void> {
     const chatsIds = await this.fetchChatList()
 
-    const bar = new ProgressBar('Loading :i/:total: [:bar:percent] :etas', {
-      complete: '=',
-      incomplete: ' ',
+    const barTemplate = 'Loading :i/:total: [:bar:percent] :etas'
+    const bar = new ProgressBar(barTemplate, {
       width: 20,
       total: chatsIds.length
     })
 
     for (let i = 0; i < chatsIds.length; i++) {
-      bar.tick({
-        i: i + 1
-      })
+      bar.tick({ i: i + 1 })
 
       const chatId = chatsIds[i]
       const chat: Chat = await this.fetchChat(chatId)

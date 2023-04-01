@@ -8,7 +8,7 @@ async function main (): Promise<void> {
   const testChatId = config.testChatId ?? 0
 
   const chatHistoryInstance = new ChatHistory(client, testChatId)
-  await chatHistoryInstance.fetchChatHistory(10, 0)
+  await chatHistoryInstance.fetchChatHistory(config.iterationForChat, 0)
 
   const chatListInstance = new ChatList(client)
   await chatListInstance.fetchChats()

@@ -2,6 +2,7 @@
 import Datastore from 'nedb-promises'
 import path from 'path'
 import { type Client } from 'tdl'
+import ProgressBar from 'progress'
 
 import { type Messages, type Message } from 'tdlib-types'
 
@@ -82,17 +83,34 @@ class ChatHistory {
     return oldestMessage?._id ?? null
   }
 
-  async fetchChatHistory (remainingIterations: number, fromMessageId?: number): Promise<void> {
+  async fetchChatHistory (remainingIterations: number, fromMessageId?: number, hideProgressBar: boolean = false): Promise<void> {
     if (remainingIterations === 0) return
 
     fromMessageId = fromMessageId ?? await this.findOldestMessageId() ?? 0
 
-    for (let i = 0; i < remainingIterations; i++) {
+    const barTemplate = `Loading chat: ${this.chatId} (iteration :i) [:bar:percent] :etas`
+
+    const bar = new ProgressBar(barTemplate, {
+      width: 20,
+      total: remainingIterations,
+      clear: hideProgressBar
+    })
+
+    let i
+    for (i = 0; i < remainingIterations; i++) {
+      bar.tick({ i: i + 1 })
+
       const minMessageId = await this.fetchMessageChunk(fromMessageId)
 
       if (minMessageId == null) break
       fromMessageId = minMessageId
     }
+
+    // if there are remaining iterations, tick the bar to the end
+    if (i < remainingIterations) {
+      bar.tick({ i: remainingIterations })
+    }
+    bar.render()
   }
 }
 
