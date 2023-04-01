@@ -83,10 +83,15 @@ class ChatHistory {
     return oldestMessage?._id ?? null
   }
 
-  async fetchChatHistory (remainingIterations: number, fromMessageId?: number, hideProgressBar: boolean = false): Promise<void> {
+  async fetchChatHistory (
+    remainingIterations: number,
+    fromMessageId?: number,
+    hideProgressBar: boolean = false,
+    prefixProgressBar: string = ''
+  ): Promise<void> {
     fromMessageId = fromMessageId ?? await this.findOldestMessageId() ?? 0
 
-    const barTemplate = `Loading chat: ${this.chatId} (iteration :i) [:bar:percent] :etas`
+    const barTemplate = `${prefixProgressBar} (iteration :i) [:bar:percent] :etas`
 
     const bar = new ProgressBar(barTemplate, {
       width: 20,
@@ -110,8 +115,6 @@ class ChatHistory {
       bar.tick({ i: remainingIterations })
     }
     bar.terminate()
-
-    console.log(`Chat ${this.chatId} loaded`)
   }
 }
 

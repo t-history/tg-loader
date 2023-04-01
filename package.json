@@ -12,7 +12,6 @@
   "author": "Mois",
   "license": "ISC",
   "dependencies": {
-    "@types/nedb": "^1.8.13",
     "chalk": "^5.2.0",
     "dotenv": "^16.0.3",
     "nedb": "^1.8.0",
@@ -24,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^18.15.10",
+    "@types/nedb": "^1.8.13",
     "@types/progress": "^2.0.5",
     "@typescript-eslint/eslint-plugin": "^5.57.0",
     "@typescript-eslint/parser": "^5.57.0",
