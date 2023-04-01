@@ -84,8 +84,6 @@ class ChatHistory {
   }
 
   async fetchChatHistory (remainingIterations: number, fromMessageId?: number, hideProgressBar: boolean = false): Promise<void> {
-    if (remainingIterations === 0) return
-
     fromMessageId = fromMessageId ?? await this.findOldestMessageId() ?? 0
 
     const barTemplate = `Loading chat: ${this.chatId} (iteration :i) [:bar:percent] :etas`
@@ -101,16 +99,19 @@ class ChatHistory {
       bar.tick({ i: i + 1 })
 
       const minMessageId = await this.fetchMessageChunk(fromMessageId)
-
       if (minMessageId == null) break
       fromMessageId = minMessageId
+
+      await new Promise(resolve => setTimeout(resolve, 600))
     }
 
     // if there are remaining iterations, tick the bar to the end
     if (i < remainingIterations) {
       bar.tick({ i: remainingIterations })
     }
-    bar.render()
+    bar.terminate()
+
+    console.log(`Chat ${this.chatId} loaded`)
   }
 }
 
