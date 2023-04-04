@@ -12,8 +12,10 @@
   "author": "Mois",
   "license": "ISC",
   "dependencies": {
+    "bullmq": "^3.10.3",
     "chalk": "^5.2.0",
     "dotenv": "^16.0.3",
+    "ioredis": "^5.3.1",
     "nedb": "^1.8.0",
     "nedb-promises": "^6.2.1",
     "progress": "^2.0.3",
@@ -22,8 +24,8 @@
     "tdlib-types": "^0.1001008.1"
   },
   "devDependencies": {
-    "@types/node": "^18.15.10",
     "@types/nedb": "^1.8.13",
+    "@types/node": "^18.15.10",
     "@types/progress": "^2.0.5",
     "@typescript-eslint/eslint-plugin": "^5.57.0",
     "@typescript-eslint/parser": "^5.57.0",

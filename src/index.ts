@@ -2,7 +2,40 @@ import config from './config'
 import client from './client'
 import ChatHistory from './ChatHistory'
 import ChatList from './ChatList'
-import ProgressBar from 'progress'
+
+import { Queue, Worker, type Job } from 'bullmq'
+import IORedis from 'ioredis'
+
+interface ChatListJob {
+  chatId: number
+  fromMessageId: number
+}
+
+const connection = new IORedis(config.redisConnection)
+
+const queue = new Queue('chatHistoryQueue', {
+  connection
+})
+
+console.log(queue)
+
+const worker = new Worker('chatHistoryQueue', async (job: Job) => {
+  if (job.name === 'chatHistory') {
+    const { chatId, fromMessageId }: ChatListJob = job.data
+    const chatHistoryInstance = new ChatHistory(client, chatId)
+    await chatHistoryInstance.fetchChatHistory(
+      config.iterationForChat,
+      fromMessageId
+    )
+  }
+}, { connection })
+
+worker.on('completed', (job: Job) => {
+  const chatId: number = job.data.chatId
+  if (job.id != null) {
+    console.log(`Job ${job.id} completed with return value | ${chatId}`)
+  }
+})
 
 async function main (): Promise<void> {
   await client.login()
@@ -11,26 +44,15 @@ async function main (): Promise<void> {
   await chatListInstance.fetchChats()
 
   const chats = await chatListInstance.chatCollection.find({ 'type._': 'chatTypePrivate' }, { id: 1, 'last_message.id': 1 })
-  const barTemplate = 'Loading :i/:total chat: :chatId'
-  const bar = new ProgressBar(barTemplate, {
-    total: chats.length,
-    width: 30
-  })
 
-  for (let i = 0; i < chats.length; i++) {
-    bar.tick({ i: i + 1, chatId: chats[i].id })
-
-    const chat = chats[i]
-    const chatHistoryInstance = new ChatHistory(client, chat.id)
-    await chatHistoryInstance.fetchChatHistory(
-      config.iterationForChat,
-      chat.last_message?.id ?? 0,
-      true,
-      `Loading ${i}/${chats.length} chat: ${chat.id}`
-    )
-    bar.interrupt(`Loaded ${chat.id}`)
-    await new Promise(resolve => setTimeout(resolve, 300))
-  }
+  const chat = chats[0]
+  await queue.add('chatHistory', { chatId: chat.id, fromMessageId: chat.last_message?.id ?? 0 })
+  // await queue.addBulk(chats.map(
+  //   chat => ({
+  //     name: 'chatHistory',
+  //     data: { chatId: chat.id, fromMessageId: chat.last_message?.id ?? 0 }
+  //   }))
+  // )
 }
 
 main().catch((err: Error) => {
