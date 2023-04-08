@@ -3,7 +3,6 @@ import Datastore from 'nedb-promises'
 import path from 'path'
 import { type Client } from 'tdl'
 import { type Chat } from 'tdlib-types'
-import ProgressBar from 'progress'
 
 interface LChat extends Chat {
   _id: number
@@ -33,10 +32,12 @@ class ChatList {
   }
 
   async fetchChat (id: number): Promise<Chat> {
-    return await this.client.invoke({
+    const chat: Chat = await this.client.invoke({
       _: 'getChat',
       chat_id: id
     })
+    await this.writeChatToDb(chat)
+    return chat
   }
 
   async writeChatToDb (chat: Chat): Promise<void> {
@@ -54,24 +55,17 @@ class ChatList {
     }
   }
 
+  async findChatById (chatId: number): Promise<LChat | null> {
+    return await this.chatCollection.findOne({ _id: chatId })
+  }
+
   async fetchChats (): Promise<void> {
     const chatsIds = await this.fetchChatList()
 
-    const barTemplate = 'Loading :i/:total: [:bar:percent] :etas'
-    const bar = new ProgressBar(barTemplate, {
-      width: 20,
-      total: chatsIds.length
-    })
-
     for (let i = 0; i < chatsIds.length; i++) {
-      bar.tick({ i: i + 1 })
-
       const chatId = chatsIds[i]
-      const chat: Chat = await this.fetchChat(chatId)
-      await this.writeChatToDb(chat)
+      await this.fetchChat(chatId)
     }
-
-    bar.terminate()
   }
 }
 

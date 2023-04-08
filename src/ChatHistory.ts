@@ -2,8 +2,6 @@
 import Datastore from 'nedb-promises'
 import path from 'path'
 import { type Client } from 'tdl'
-import ProgressBar from 'progress'
-
 import { type Messages, type Message } from 'tdlib-types'
 
 interface LMessage extends Message {
@@ -26,22 +24,28 @@ class ChatHistory {
     this.chatHistoryCollection = Datastore.create({ filename, autoload: true })
   }
 
-  async writeMassageToDb (message: Message): Promise<void> {
-    const messageWithId: LMessage = {
-      ...message,
-      _id: message.id
-    }
-
-    const doc = this.chatHistoryCollection.findOne({ _id: messageWithId._id })
+  async writeMassageToDb (message: Message): Promise<string> {
+    const doc = this.findMessageById(message.id)
 
     if (doc === null) {
-      await this.chatHistoryCollection.insert(message)
+      const messageWithId: LMessage = {
+        ...message,
+        _id: message.id
+      }
+      await this.chatHistoryCollection.insert(messageWithId)
+
+      return 'inserted'
     } else {
+      return 'updated'
       // TODO: update message if it's changed
     }
   }
 
-  async fetchMessageChunk (fromMessageId: number): Promise<number | null> {
+  async findMessageById (messageId: number): Promise<LMessage | null> {
+    return await this.chatHistoryCollection.findOne({ _id: messageId })
+  }
+
+  async requestMessageChunk (fromMessageId: number): Promise<Array<Message | undefined>> {
     const messageChunk: Messages = await this.client.invoke({
       _: 'getChatHistory',
       chat_id: this.chatId,
@@ -51,22 +55,31 @@ class ChatHistory {
       only_local: false
     })
 
-    if (messageChunk.total_count === 0) {
-      return null
-    }
+    return messageChunk.messages
+  }
 
-    const messages = messageChunk.messages
+  async writeMessageChunk (messages: Array<Message | undefined>): Promise<void> {
     for await (const message of messages) {
       if (message == null) break
       await this.writeMassageToDb(message)
     }
+  }
 
-    const minMessage = messages[messages.length - 1]
-    if (minMessage == null) {
-      throw new Error('minMessageId is null')
+  async fetchMessageChunk (fromMessageId: number): Promise<number | null> {
+    const messages = await this.requestMessageChunk(fromMessageId)
+
+    if (messages.length === 0) {
+      return null
     }
 
-    return minMessage.id
+    await this.writeMessageChunk(messages)
+
+    const oldestMessage = messages[messages.length - 1]
+    if (oldestMessage == null) {
+      throw new Error('oldestMessage is null')
+    }
+
+    return oldestMessage.id
   }
 
   async findOldestMessage (): Promise<LMessage | null> {
@@ -83,39 +96,21 @@ class ChatHistory {
     return oldestMessage?._id ?? null
   }
 
-  async fetchChatHistory (
-    remainingIterations: number,
-    fromMessageId?: number,
-    hideProgressBar: boolean = false,
-    prefixProgressBar: string = ''
-  ): Promise<void> {
-    fromMessageId = fromMessageId ?? await this.findOldestMessageId() ?? 0
+  // async fetchChatHistory (
+  //   remainingIterations: number,
+  //   fromMessageId: number,
+  //   depth: 'full' | 'sync' | number
+  // ): Promise<number | null> {
+  //   for (let i = 0; i < remainingIterations; i++) {
+  //     const minMessageId = await this.fetchMessageChunk(fromMessageId)
+  //     if (minMessageId == null) break
+  //     fromMessageId = minMessageId
 
-    const barTemplate = `${prefixProgressBar} (iteration :i) [:bar:percent] :etas`
+  //     await new Promise(resolve => setTimeout(resolve, 600))
+  //   }
 
-    const bar = new ProgressBar(barTemplate, {
-      width: 20,
-      total: remainingIterations,
-      clear: hideProgressBar
-    })
-
-    let i
-    for (i = 0; i < remainingIterations; i++) {
-      bar.tick({ i: i + 1 })
-
-      const minMessageId = await this.fetchMessageChunk(fromMessageId)
-      if (minMessageId == null) break
-      fromMessageId = minMessageId
-
-      await new Promise(resolve => setTimeout(resolve, 600))
-    }
-
-    // if there are remaining iterations, tick the bar to the end
-    if (i < remainingIterations) {
-      bar.tick({ i: remainingIterations })
-    }
-    bar.terminate()
-  }
+  //   return null
+  // }
 }
 
 export default ChatHistory
