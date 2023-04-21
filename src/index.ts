@@ -1,10 +1,13 @@
 import config from './config'
-import client from './client'
+import tgClient from './client'
+import Database from './db'
 import ChatHistory from './ChatHistory'
 import ChatList from './ChatList'
 
 import { Queue, Worker, type Job } from 'bullmq'
 import IORedis from 'ioredis'
+
+const dbClient = new Database(config.mongoConnection)
 
 interface ChatListJob {
   chatId: number
@@ -27,7 +30,7 @@ console.log(queue)
 const getChatJob = async (job: ChatListJob): Promise<void> => {
   const { chatId, depth }: ChatListJob = job
 
-  const chatListInstance = new ChatList(client)
+  const chatListInstance = new ChatList(tgClient, dbClient)
   const oldChat = await chatListInstance.findChatById(chatId)
   const chat = await chatListInstance.fetchChat(chatId)
 
@@ -46,7 +49,7 @@ const getChatJob = async (job: ChatListJob): Promise<void> => {
 
 const getMessagesJob = async (job: MessagesJob): Promise<void> => {
   const { chatId, depth, fromMessageId, toMessageId }: MessagesJob = job
-  const chatHistoryInstance = new ChatHistory(client, chatId)
+  const chatHistoryInstance = new ChatHistory(tgClient, chatId)
   const unixtime = Math.floor(Date.now() / 1000)
 
   const messageChunk = await chatHistoryInstance.requestMessageChunk(
@@ -122,7 +125,11 @@ worker.on('completed', (job: Job) => {
 })
 
 async function main (): Promise<void> {
-  await client.login()
+  await tgClient.login()
+  await dbClient.connect('thistory')
+
+  const chatListInstance = new ChatList(tgClient, dbClient)
+  await chatListInstance.fetchChats()
 }
 
 main().catch((err: Error) => {

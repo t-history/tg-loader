@@ -1,28 +1,25 @@
 // class for loading and updating telegram chat list using TDLib
-import Datastore from 'nedb-promises'
-import path from 'path'
-import { type Client } from 'tdl'
+import { type Client as TgClient } from 'tdl'
 import { type Chat } from 'tdlib-types'
-
-interface LChat extends Chat {
-  _id: number
-}
+import { type Collection } from 'mongodb'
+import type Database from './db'
 
 interface ChatList {
-  chatCollection: Datastore<Chat>
-  client: Client
+  chatCollection: Collection<Chat>
+  tgClient: TgClient
 }
 
 class ChatList {
-  constructor (client: Client) {
-    const filename = path.join(__dirname, '../db/chats.db')
-
-    this.client = client
-    this.chatCollection = Datastore.create({ filename, autoload: true })
+  constructor (tgClient: TgClient, dbClient: Database) {
+    if (dbClient.db == null) {
+      throw new Error('For init ChatList dbClient must be connected')
+    }
+    this.tgClient = tgClient
+    this.chatCollection = dbClient.db.collection('chats')
   }
 
   async fetchChatList (): Promise<number[]> {
-    const chats = await this.client.invoke({
+    const chats = await this.tgClient.invoke({
       _: 'getChats',
       chat_list: { _: 'chatListMain' },
       limit: 4000
@@ -32,7 +29,7 @@ class ChatList {
   }
 
   async fetchChat (id: number): Promise<Chat> {
-    const chat: Chat = await this.client.invoke({
+    const chat: Chat = await this.tgClient.invoke({
       _: 'getChat',
       chat_id: id
     })
@@ -41,30 +38,26 @@ class ChatList {
   }
 
   async writeChatToDb (chat: Chat): Promise<void> {
-    const chatWithId: LChat = {
-      ...chat,
-      _id: chat.id
-    }
-
-    const doc = await this.chatCollection.findOne({ _id: chatWithId.id })
-
-    if (doc === null) {
-      await this.chatCollection.insert(chatWithId)
-    } else {
-      // TODO: update chat if it's changed
-    }
+    await this.chatCollection.updateOne(
+      { id: chat.id },
+      { $set: chat },
+      { upsert: true }
+    )
   }
 
-  async findChatById (chatId: number): Promise<LChat | null> {
-    return await this.chatCollection.findOne({ _id: chatId })
+  async findChatById (chatId: number): Promise<Chat | null> {
+    const chat = await this.chatCollection.findOne({ id: chatId })
+
+    return chat
   }
 
   async fetchChats (): Promise<void> {
     const chatsIds = await this.fetchChatList()
-
+    console.log('Fetched', chatsIds)
     for (let i = 0; i < chatsIds.length; i++) {
       const chatId = chatsIds[i]
       await this.fetchChat(chatId)
+      console.log(`Chat ${i + 1} of ${chatsIds.length} fetched`)
     }
   }
 }
