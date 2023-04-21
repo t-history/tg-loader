@@ -49,7 +49,7 @@ const getChatJob = async (job: ChatListJob): Promise<void> => {
 
 const getMessagesJob = async (job: MessagesJob): Promise<void> => {
   const { chatId, depth, fromMessageId, toMessageId }: MessagesJob = job
-  const chatHistoryInstance = new ChatHistory(tgClient, chatId)
+  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
   const unixtime = Math.floor(Date.now() / 1000)
 
   const messageChunk = await chatHistoryInstance.requestMessageChunk(

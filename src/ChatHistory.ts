@@ -1,52 +1,95 @@
-// class for loading and updating telegram chat using TDLib
-import Datastore from 'nedb-promises'
-import path from 'path'
-import { type Client } from 'tdl'
-import { type Messages, type Message } from 'tdlib-types'
 
-interface LMessage extends Message {
-  _id: number
+import { type Client as TgClient } from 'tdl'
+import { type Messages, type Message } from 'tdlib-types'
+import type Database from './db'
+import { type Collection, type WithId } from 'mongodb'
+import { diff } from 'deep-diff'
+import crypto from 'crypto'
+
+type DbMessage = Message & {
+  history: any[]
+  hash: string
 }
 
 interface ChatHistory {
   chatId: number
-  chatHistoryCollection: Datastore<LMessage>
+  collection: Collection<DbMessage>
   fromMessageId: number
-  client: Client
+  tgClient: TgClient
 }
 
 class ChatHistory {
-  constructor (client: Client, chatId: number) {
-    const filename = path.join(__dirname, `../db/chats/${chatId}.db`)
-
-    this.client = client
+  constructor (tgClient: TgClient, dbClient: Database, chatId: number) {
+    if (dbClient.db == null) {
+      throw new Error('For init ChatHistory dbClient must be connected')
+    }
+    this.tgClient = tgClient
     this.chatId = chatId
-    this.chatHistoryCollection = Datastore.create({ filename, autoload: true })
+    this.collection = dbClient.db.collection('messages')
   }
 
-  async writeMassageToDb (message: Message): Promise<string> {
-    const doc = this.findMessageById(message.id)
+  private calculateHash (obj: Partial<Message>): string {
+    const str = JSON.stringify(obj)
+    return crypto.createHash('sha256').update(str).digest('hex')
+  }
 
-    if (doc === null) {
-      const messageWithId: LMessage = {
-        ...message,
-        _id: message.id
+  private copyObj<T> (obj: T): T {
+    return JSON.parse(JSON.stringify(obj))
+  }
+
+  stripDbFields (dbMessage: WithId<DbMessage>): Message {
+    const { _id, history, hash, ...message } = dbMessage
+    return message
+  }
+
+  async updateMessageInDb (existingMessage: WithId<DbMessage>, message: Message): Promise<void> {
+    const newHash = this.calculateHash(message)
+
+    if (existingMessage.hash !== newHash) {
+      const copyExistingMessage = this.stripDbFields(existingMessage)
+      const diffMessages = diff(copyExistingMessage, message)
+      const updateDate = new Date()
+      const history = existingMessage.history
+
+      if (diffMessages !== undefined) {
+        history.push({ diff: this.copyObj(diffMessages), date: updateDate })
       }
-      await this.chatHistoryCollection.insert(messageWithId)
 
-      return 'inserted'
-    } else {
-      return 'updated'
-      // TODO: update message if it's changed
+      const dbMessage: DbMessage = {
+        ...message,
+        hash: newHash,
+        history
+      }
+
+      await this.collection.updateOne({ _id: existingMessage._id }, { $set: dbMessage })
     }
   }
 
-  async findMessageById (messageId: number): Promise<LMessage | null> {
-    return await this.chatHistoryCollection.findOne({ _id: messageId })
+  async insertMessageToDb (message: Message): Promise<void> {
+    const hash = this.calculateHash(message)
+    const dbMessage: DbMessage = {
+      ...message,
+      hash,
+      history: []
+    }
+    await this.collection.insertOne(dbMessage)
+  }
+
+  async writeMassageToDb (message: Message): Promise<string> {
+    const existingMessage: WithId<DbMessage> | null =
+      await this.collection.findOne({ chat_id: this.chatId, id: message.id })
+
+    if (existingMessage === null) {
+      await this.insertMessageToDb(message)
+      return 'inserted'
+    } else {
+      await this.updateMessageInDb(existingMessage, message)
+      return 'updated'
+    }
   }
 
   async requestMessageChunk (fromMessageId: number): Promise<Array<Message | undefined>> {
-    const messageChunk: Messages = await this.client.invoke({
+    const messageChunk: Messages = await this.tgClient.invoke({
       _: 'getChatHistory',
       chat_id: this.chatId,
       from_message_id: fromMessageId,
@@ -82,35 +125,21 @@ class ChatHistory {
     return oldestMessage.id
   }
 
-  async findOldestMessage (): Promise<LMessage | null> {
-    const oldestMessage = await this.chatHistoryCollection
-      .findOne({})
+  async findOldestMessage (): Promise<Message | null> {
+    const messages = await this.collection
+      .find({ chatId: this.chatId })
       .sort({ id: 1 })
+      .limit(1)
+      .toArray()
 
-    return oldestMessage
+    return messages.length > 0 ? messages[0] : null
   }
 
   async findOldestMessageId (): Promise<number | null> {
     const oldestMessage = await this.findOldestMessage()
 
-    return oldestMessage?._id ?? null
+    return oldestMessage?.id ?? null
   }
-
-  // async fetchChatHistory (
-  //   remainingIterations: number,
-  //   fromMessageId: number,
-  //   depth: 'full' | 'sync' | number
-  // ): Promise<number | null> {
-  //   for (let i = 0; i < remainingIterations; i++) {
-  //     const minMessageId = await this.fetchMessageChunk(fromMessageId)
-  //     if (minMessageId == null) break
-  //     fromMessageId = minMessageId
-
-  //     await new Promise(resolve => setTimeout(resolve, 600))
-  //   }
-
-  //   return null
-  // }
 }
 
 export default ChatHistory
