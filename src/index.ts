@@ -145,8 +145,26 @@ async function main (): Promise<void> {
   await tgClient.login()
   await dbClient.connect('thistory')
 
-  const chatListInstance = new ChatList(tgClient, dbClient)
-  await chatListInstance.fetchChats()
+  // const chatListInstance = new ChatList(tgClient, dbClient)
+  // const chatIds = await chatListInstance.fetchChatList()
+
+  // for (const chatId of chatIds) {
+  //   const chatListJob: ChatListJob = {
+  //     chatId,
+  //     depth: 'full'
+  //   }
+
+  //   await queue.add('getChat', chatListJob)
+  // }
+
+  // const chatHistoryInstance = new ChatHistory(tgClient, dbClient, 464028197)
+  // await chatHistoryInstance.fetchMessageChunk(0)
+
+  // getMessagesJob({
+  //   chatId: 464028197,
+  //   fromMessageId: 0,
+  //   depth: 'full'
+  // })
 }
 
 main().catch((err: Error) => {

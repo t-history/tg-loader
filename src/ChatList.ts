@@ -51,15 +51,15 @@ class ChatList {
     return chat
   }
 
-  async fetchChats (): Promise<void> {
-    const chatsIds = await this.fetchChatList()
-    console.log('Fetched', chatsIds)
-    for (let i = 0; i < chatsIds.length; i++) {
-      const chatId = chatsIds[i]
-      await this.fetchChat(chatId)
-      console.log(`Chat ${i + 1} of ${chatsIds.length} fetched`)
-    }
-  }
+  // async fetchChats (): Promise<void> {
+  //   const chatsIds = await this.fetchChatList()
+  //   console.log('Fetched', chatsIds)
+  //   for (let i = 0; i < chatsIds.length; i++) {
+  //     const chatId = chatsIds[i]
+  //     await this.fetchChat(chatId)
+  //     console.log(`Chat ${i + 1} of ${chatsIds.length} fetched`)
+  //   }
+  // }
 }
 
 export default ChatList
