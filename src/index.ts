@@ -96,6 +96,12 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
   }
 
   if (quite) {
+    // TODO rewrite to ChatItem class
+    const chatListInstance = new ChatList(tgClient, dbClient)
+    const chat = await chatListInstance.findChatById(chatId)
+    if (chat == null) throw new Error('Chat not found')
+    await chatListInstance.chatCollection.updateOne({ _id: chat._id }, { $set: { status: 'idle' } })
+
     return
   }
 

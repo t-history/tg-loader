@@ -116,7 +116,7 @@ class ChatList {
     await this.chatCollection.insertOne(dbChat)
   }
 
-  async findChatById (chatId: number): Promise<Chat | null> {
+  async findChatById (chatId: number): Promise<WithId<DbChat> | null> {
     const chat = await this.chatCollection.findOne({ id: chatId })
 
     return chat
