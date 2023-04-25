@@ -1,11 +1,22 @@
 // class for loading and updating telegram chat list using TDLib
 import { type Client as TgClient } from 'tdl'
 import { type Chat } from 'tdlib-types'
-import { type Collection } from 'mongodb'
+import { type Collection, type WithId } from 'mongodb'
 import type Database from './db'
+import { copyObj, calculateHash } from './utils'
+import { diff } from 'deep-diff'
+
+export interface additionalChatFields {
+  history: any[]
+  hash: string
+  status: 'queued' | 'in_progress' | 'idle'
+  lastUpdate: Date
+}
+
+export type DbChat = Chat & additionalChatFields
 
 interface ChatList {
-  chatCollection: Collection<Chat>
+  chatCollection: Collection<DbChat>
   tgClient: TgClient
 }
 
@@ -16,6 +27,14 @@ class ChatList {
     }
     this.tgClient = tgClient
     this.chatCollection = dbClient.db.collection('chats')
+  }
+
+  stripDbFields (dbChat: WithId<DbChat>): Chat {
+    const { _id, history, hash, status, lastUpdate, ...chat } = dbChat
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const additionalFields: additionalChatFields = { history, hash, status, lastUpdate } // for type checking
+    return chat
   }
 
   async fetchChatList (): Promise<number[]> {
@@ -37,12 +56,64 @@ class ChatList {
     return chat
   }
 
-  async writeChatToDb (chat: Chat): Promise<void> {
-    await this.chatCollection.updateOne(
-      { id: chat.id },
-      { $set: chat },
-      { upsert: true }
-    )
+  async writeChatToDb (chat: Chat): Promise<string> {
+    const existingChat = await this.chatCollection.findOne({ id: chat.id })
+
+    if (existingChat == null) {
+      await this.insertChatToDb(chat)
+      return 'inserted'
+    }
+
+    if (existingChat.status === 'idle') {
+      await this.updateChatInDb(existingChat, chat)
+      return 'updated'
+    }
+
+    console.error(`Chat ${chat.id} is already in progress`)
+    return 'skipped'
+  }
+
+  async updateChatInDb (existingChat: WithId<DbChat>, chat: Chat): Promise<void> {
+    const newHash = calculateHash(chat)
+    if (existingChat.hash === newHash) return
+
+    const copyExistingChat = this.stripDbFields(existingChat)
+    const diffChats = diff(copyExistingChat, chat)
+    const updateDate = new Date()
+    const history = existingChat.history
+
+    if (diffChats !== undefined) {
+      history.push({
+        diff: copyObj(diffChats),
+        dateInterval: {
+          start: existingChat.lastUpdate,
+          end: updateDate
+        }
+      })
+    }
+
+    const dbChat: DbChat = {
+      ...chat,
+      hash: newHash,
+      history,
+      status: 'in_progress',
+      lastUpdate: updateDate
+    }
+
+    await this.chatCollection.updateOne({ _id: existingChat._id }, { $set: dbChat })
+  }
+
+  async insertChatToDb (chat: Chat): Promise<void> {
+    const hash = calculateHash(chat)
+    const dbChat: DbChat = {
+      ...chat,
+      hash,
+      history: [],
+      status: 'in_progress',
+      lastUpdate: new Date()
+    }
+
+    await this.chatCollection.insertOne(dbChat)
   }
 
   async findChatById (chatId: number): Promise<Chat | null> {
