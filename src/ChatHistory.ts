@@ -4,12 +4,15 @@ import { type Messages, type Message } from 'tdlib-types'
 import type Database from './db'
 import { type Collection, type WithId } from 'mongodb'
 import { diff } from 'deep-diff'
-import crypto from 'crypto'
+import { calculateHash, copyObj } from './utils'
 
-type DbMessage = Message & {
+export interface additionalMessageFields {
   history: any[]
   hash: string
+  lastUpdate: Date
 }
+
+export type DbMessage = Message & additionalMessageFields
 
 interface ChatHistory {
   chatId: number
@@ -28,49 +31,50 @@ class ChatHistory {
     this.collection = dbClient.db.collection('messages')
   }
 
-  private calculateHash (obj: Partial<Message>): string {
-    const str = JSON.stringify(obj)
-    return crypto.createHash('sha256').update(str).digest('hex')
-  }
+  static stripDbFields (dbMessage: WithId<DbMessage>): Message {
+    const { _id, history, hash, lastUpdate, ...message } = dbMessage
 
-  private copyObj<T> (obj: T): T {
-    return JSON.parse(JSON.stringify(obj))
-  }
-
-  stripDbFields (dbMessage: WithId<DbMessage>): Message {
-    const { _id, history, hash, ...message } = dbMessage
-    return message
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const additionalFields: additionalMessageFields = { history, hash, lastUpdate } // for type check
+    return message as Message
   }
 
   async updateMessageInDb (existingMessage: WithId<DbMessage>, message: Message): Promise<void> {
-    const newHash = this.calculateHash(message)
+    const newHash = calculateHash(message)
+    if (existingMessage.hash === newHash) return
 
-    if (existingMessage.hash !== newHash) {
-      const copyExistingMessage = this.stripDbFields(existingMessage)
-      const diffMessages = diff(copyExistingMessage, message)
-      const updateDate = new Date()
-      const history = existingMessage.history
+    const copyExistingMessage = ChatHistory.stripDbFields(existingMessage)
+    const diffMessages = diff(copyExistingMessage, message)
+    const updateDate = new Date()
+    const history = existingMessage.history
 
-      if (diffMessages !== undefined) {
-        history.push({ diff: this.copyObj(diffMessages), date: updateDate })
-      }
-
-      const dbMessage: DbMessage = {
-        ...message,
-        hash: newHash,
-        history
-      }
-
-      await this.collection.updateOne({ _id: existingMessage._id }, { $set: dbMessage })
+    if (diffMessages !== undefined) {
+      history.push({
+        diff: copyObj(diffMessages),
+        dateInterval: {
+          start: existingMessage.lastUpdate,
+          end: updateDate
+        }
+      })
     }
+
+    const dbMessage: DbMessage = {
+      ...message,
+      hash: newHash,
+      history,
+      lastUpdate: updateDate
+    }
+
+    await this.collection.updateOne({ _id: existingMessage._id }, { $set: dbMessage })
   }
 
   async insertMessageToDb (message: Message): Promise<void> {
-    const hash = this.calculateHash(message)
+    const hash = calculateHash(message)
     const dbMessage: DbMessage = {
       ...message,
       hash,
-      history: []
+      history: [],
+      lastUpdate: new Date()
     }
     await this.collection.insertOne(dbMessage)
   }
