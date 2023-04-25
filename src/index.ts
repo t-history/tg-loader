@@ -19,11 +19,15 @@ interface MessagesJob extends ChatListJob {
   toMessageId?: number
 }
 
-const connection = new IORedis(config.redisConnection)
-
-const queue = new Queue('chatHistoryQueue', {
-  connection
+const connection = new IORedis({
+  port: config.redisPort,
+  host: config.redisHost,
+  username: config.redisUser,
+  password: config.redisPass,
+  maxRetriesPerRequest: null
 })
+
+const queue = new Queue('chatHistoryQueue', { connection })
 
 const getChatJob = async (job: ChatListJob): Promise<void> => {
   const { chatId, depth }: ChatListJob = job
@@ -125,7 +129,6 @@ const worker = new Worker('chatHistoryQueue', async (job: Job) => {
     max: 5,
     duration: 1000
   },
-
   metrics: {
     maxDataPoints: MetricsTime.ONE_WEEK * 2
   }
