@@ -25,8 +25,6 @@ const queue = new Queue('chatHistoryQueue', {
   connection
 })
 
-console.log(queue)
-
 const getChatJob = async (job: ChatListJob): Promise<void> => {
   const { chatId, depth }: ChatListJob = job
 
@@ -34,9 +32,15 @@ const getChatJob = async (job: ChatListJob): Promise<void> => {
   const oldChat = await chatListInstance.findChatById(chatId)
   const chat = await chatListInstance.fetchChat(chatId)
 
+  if (chat.type._ !== 'chatTypePrivate') return
+  if (chat.last_message == null) return
+
+  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
+  await chatHistoryInstance.writeMassageToDb(chat.last_message)
+
   const messageJob: MessagesJob = {
     chatId,
-    fromMessageId: chat.last_message?.id ?? 0,
+    fromMessageId: chat.last_message.id ?? 0,
     depth
   }
 
