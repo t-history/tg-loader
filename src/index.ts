@@ -139,6 +139,9 @@ worker.on('completed', (job: Job) => {
 })
 
 async function main (): Promise<void> {
+  await connection.flushdb()
+  console.log('Queue flushed')
+
   await tgClient.login()
   await dbClient.connect('thistory')
 
