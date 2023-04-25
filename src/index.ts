@@ -4,7 +4,7 @@ import Database from './db'
 import ChatHistory from './ChatHistory'
 import ChatList from './ChatList'
 
-import { Queue, Worker, type Job } from 'bullmq'
+import { Queue, Worker, type Job, MetricsTime } from 'bullmq'
 import IORedis from 'ioredis'
 
 const dbClient = new Database(config.mongoConnection)
@@ -115,7 +115,17 @@ const worker = new Worker('chatHistoryQueue', async (job: Job) => {
     const messagesJob: MessagesJob = job.data
     await getMessagesJob(messagesJob)
   }
-}, { connection })
+}, {
+  connection,
+  limiter: {
+    max: 5,
+    duration: 1000
+  },
+
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK * 2
+  }
+})
 
 worker.on('completed', (job: Job) => {
   const chatId: number = job.data.chatId
