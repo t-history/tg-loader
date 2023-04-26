@@ -1,58 +1,179 @@
 import config from './config'
-import client from './client'
+import tgClient from './client'
+import Database from './db'
 import ChatHistory from './ChatHistory'
 import ChatList from './ChatList'
 
-import { Queue, Worker, type Job } from 'bullmq'
+import { Queue, Worker, type Job, MetricsTime } from 'bullmq'
 import IORedis from 'ioredis'
+
+const dbClient = new Database(config.mongoConnection)
 
 interface ChatListJob {
   chatId: number
-  fromMessageId: number
+  depth: 'full' | 'sync' | number
 }
 
-const connection = new IORedis(config.redisConnection)
+interface MessagesJob extends ChatListJob {
+  fromMessageId: number
+  toMessageId?: number
+}
 
-const queue = new Queue('chatHistoryQueue', {
-  connection
+const connection = new IORedis({
+  port: config.redisPort,
+  host: config.redisHost,
+  username: config.redisUser,
+  password: config.redisPass,
+  maxRetriesPerRequest: null
 })
 
-console.log(queue)
+const queue = new Queue('chatHistoryQueue', { connection })
+
+const getChatJob = async (job: ChatListJob): Promise<void> => {
+  const { chatId, depth }: ChatListJob = job
+
+  const chatListInstance = new ChatList(tgClient, dbClient)
+  const oldChat = await chatListInstance.findChatById(chatId)
+  const chat = await chatListInstance.fetchChat(chatId)
+
+  if (chat.type._ !== 'chatTypePrivate') return
+  if (chat.last_message == null) return
+
+  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
+  await chatHistoryInstance.writeMassageToDb(chat.last_message)
+
+  const messageJob: MessagesJob = {
+    chatId,
+    fromMessageId: chat.last_message.id ?? 0,
+    depth
+  }
+
+  if (depth === 'sync') {
+    messageJob.toMessageId = oldChat?.last_message?.id ?? 0
+  }
+
+  await queue.add('getMessages', messageJob)
+}
+
+const getMessagesJob = async (job: MessagesJob): Promise<void> => {
+  const { chatId, depth, fromMessageId, toMessageId }: MessagesJob = job
+  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
+  const unixtime = Math.floor(Date.now() / 1000)
+
+  const messageChunk = await chatHistoryInstance.requestMessageChunk(
+    fromMessageId
+  )
+
+  let quite = false
+
+  if (depth === 'sync' && toMessageId != null) {
+    for await (const message of messageChunk) {
+      if (message == null) break
+      if (message.id <= toMessageId) {
+        quite = true
+        continue
+      }
+
+      const res = await chatHistoryInstance.writeMassageToDb(message)
+      if (res === 'updated') {
+        throw new Error('Message updated on sync')
+      }
+    }
+  } else if (depth === 'full' || depth === 'sync') { // if toMessageId is null
+    await chatHistoryInstance.writeMessageChunk(messageChunk)
+  } else if (typeof depth === 'number') {
+    for await (const message of messageChunk) {
+      if (message == null) break
+      if (message.date <= unixtime - depth) {
+        quite = true
+        continue
+      }
+
+      await chatHistoryInstance.writeMassageToDb(message)
+    }
+  } else {
+    throw new Error('Unknown depth')
+  }
+
+  if (quite) {
+    // TODO rewrite to ChatItem class
+    const chatListInstance = new ChatList(tgClient, dbClient)
+    const chat = await chatListInstance.findChatById(chatId)
+    if (chat == null) throw new Error('Chat not found')
+    await chatListInstance.chatCollection.updateOne({ _id: chat._id }, { $set: { status: 'idle' } })
+
+    return
+  }
+
+  const oldestMessage = messageChunk[messageChunk.length - 1]
+
+  if (oldestMessage != null) {
+    const messageJob: MessagesJob = {
+      chatId,
+      fromMessageId: oldestMessage.id,
+      toMessageId: toMessageId ?? undefined,
+      depth
+    }
+
+    await queue.add('getMessages', messageJob)
+  }
+}
 
 const worker = new Worker('chatHistoryQueue', async (job: Job) => {
-  if (job.name === 'chatHistory') {
-    const { chatId, fromMessageId }: ChatListJob = job.data
-    const chatHistoryInstance = new ChatHistory(client, chatId)
-    await chatHistoryInstance.fetchChatHistory(
-      config.iterationForChat,
-      fromMessageId
-    )
+  if (job.name === 'getChat') {
+    const chatListJob: ChatListJob = job.data
+    await getChatJob(chatListJob)
   }
-}, { connection })
+
+  if (job.name === 'getMessages') {
+    const messagesJob: MessagesJob = job.data
+    await getMessagesJob(messagesJob)
+  }
+}, {
+  connection,
+  limiter: {
+    max: 5,
+    duration: 1000
+  },
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK * 2
+  }
+})
 
 worker.on('completed', (job: Job) => {
   const chatId: number = job.data.chatId
   if (job.id != null) {
-    console.log(`Job ${job.id} completed with return value | ${chatId}`)
+    console.log(`Job ${job.name}:${job.id} completed for chat | ${chatId}`)
   }
 })
 
 async function main (): Promise<void> {
-  await client.login()
+  await connection.flushdb()
+  console.log('Queue flushed')
 
-  const chatListInstance = new ChatList(client)
-  await chatListInstance.fetchChats()
+  await tgClient.login()
+  await dbClient.connect('thistory')
 
-  const chats = await chatListInstance.chatCollection.find({ 'type._': 'chatTypePrivate' }, { id: 1, 'last_message.id': 1 })
+  // const chatListInstance = new ChatList(tgClient, dbClient)
+  // const chatIds = await chatListInstance.fetchChatList()
 
-  const chat = chats[0]
-  await queue.add('chatHistory', { chatId: chat.id, fromMessageId: chat.last_message?.id ?? 0 })
-  // await queue.addBulk(chats.map(
-  //   chat => ({
-  //     name: 'chatHistory',
-  //     data: { chatId: chat.id, fromMessageId: chat.last_message?.id ?? 0 }
-  //   }))
-  // )
+  // for (const chatId of chatIds) {
+  //   const chatListJob: ChatListJob = {
+  //     chatId,
+  //     depth: 'full'
+  //   }
+
+  //   await queue.add('getChat', chatListJob)
+  // }
+
+  // const chatHistoryInstance = new ChatHistory(tgClient, dbClient, 464028197)
+  // await chatHistoryInstance.fetchMessageChunk(0)
+
+  // getMessagesJob({
+  //   chatId: 464028197,
+  //   fromMessageId: 0,
+  //   depth: 'full'
+  // })
 }
 
 main().catch((err: Error) => {

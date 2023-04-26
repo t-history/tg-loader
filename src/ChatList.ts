@@ -1,29 +1,44 @@
 // class for loading and updating telegram chat list using TDLib
-import Datastore from 'nedb-promises'
-import path from 'path'
-import { type Client } from 'tdl'
+import { type Client as TgClient } from 'tdl'
 import { type Chat } from 'tdlib-types'
-import ProgressBar from 'progress'
+import { type Collection, type WithId } from 'mongodb'
+import type Database from './db'
+import { copyObj, calculateHash } from './utils'
+import { diff } from 'deep-diff'
 
-interface LChat extends Chat {
-  _id: number
+export interface additionalChatFields {
+  history: any[]
+  hash: string
+  status: 'queued' | 'in_progress' | 'idle'
+  lastUpdate: Date
 }
 
+export type DbChat = Chat & additionalChatFields
+
 interface ChatList {
-  chatCollection: Datastore<Chat>
-  client: Client
+  chatCollection: Collection<DbChat>
+  tgClient: TgClient
 }
 
 class ChatList {
-  constructor (client: Client) {
-    const filename = path.join(__dirname, '../db/chats.db')
+  constructor (tgClient: TgClient, dbClient: Database) {
+    if (dbClient.db == null) {
+      throw new Error('For init ChatList dbClient must be connected')
+    }
+    this.tgClient = tgClient
+    this.chatCollection = dbClient.db.collection('chats')
+  }
 
-    this.client = client
-    this.chatCollection = Datastore.create({ filename, autoload: true })
+  stripDbFields (dbChat: WithId<DbChat>): Chat {
+    const { _id, history, hash, status, lastUpdate, ...chat } = dbChat
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const additionalFields: additionalChatFields = { history, hash, status, lastUpdate } // for type checking
+    return chat
   }
 
   async fetchChatList (): Promise<number[]> {
-    const chats = await this.client.invoke({
+    const chats = await this.tgClient.invoke({
       _: 'getChats',
       chat_list: { _: 'chatListMain' },
       limit: 4000
@@ -33,46 +48,89 @@ class ChatList {
   }
 
   async fetchChat (id: number): Promise<Chat> {
-    return await this.client.invoke({
+    const chat: Chat = await this.tgClient.invoke({
       _: 'getChat',
       chat_id: id
     })
+    await this.writeChatToDb(chat)
+    return chat
   }
 
-  async writeChatToDb (chat: Chat): Promise<void> {
-    const chatWithId: LChat = {
+  async writeChatToDb (chat: Chat): Promise<string> {
+    const existingChat = await this.chatCollection.findOne({ id: chat.id })
+
+    if (existingChat == null) {
+      await this.insertChatToDb(chat)
+      return 'inserted'
+    }
+
+    if (existingChat.status === 'idle') {
+      await this.updateChatInDb(existingChat, chat)
+      return 'updated'
+    }
+
+    console.error(`Chat ${chat.id} is already in progress`)
+    return 'skipped'
+  }
+
+  async updateChatInDb (existingChat: WithId<DbChat>, chat: Chat): Promise<void> {
+    const newHash = calculateHash(chat)
+    if (existingChat.hash === newHash) return
+
+    const copyExistingChat = this.stripDbFields(existingChat)
+    const diffChats = diff(copyExistingChat, chat)
+    const updateDate = new Date()
+    const history = existingChat.history
+
+    if (diffChats !== undefined) {
+      history.push({
+        diff: copyObj(diffChats),
+        dateInterval: {
+          start: existingChat.lastUpdate,
+          end: updateDate
+        }
+      })
+    }
+
+    const dbChat: DbChat = {
       ...chat,
-      _id: chat.id
+      hash: newHash,
+      history,
+      status: 'in_progress',
+      lastUpdate: updateDate
     }
 
-    const doc = await this.chatCollection.findOne({ _id: chatWithId.id })
-
-    if (doc === null) {
-      await this.chatCollection.insert(chatWithId)
-    } else {
-      // TODO: update chat if it's changed
-    }
+    await this.chatCollection.updateOne({ _id: existingChat._id }, { $set: dbChat })
   }
 
-  async fetchChats (): Promise<void> {
-    const chatsIds = await this.fetchChatList()
-
-    const barTemplate = 'Loading :i/:total: [:bar:percent] :etas'
-    const bar = new ProgressBar(barTemplate, {
-      width: 20,
-      total: chatsIds.length
-    })
-
-    for (let i = 0; i < chatsIds.length; i++) {
-      bar.tick({ i: i + 1 })
-
-      const chatId = chatsIds[i]
-      const chat: Chat = await this.fetchChat(chatId)
-      await this.writeChatToDb(chat)
+  async insertChatToDb (chat: Chat): Promise<void> {
+    const hash = calculateHash(chat)
+    const dbChat: DbChat = {
+      ...chat,
+      hash,
+      history: [],
+      status: 'in_progress',
+      lastUpdate: new Date()
     }
 
-    bar.terminate()
+    await this.chatCollection.insertOne(dbChat)
   }
+
+  async findChatById (chatId: number): Promise<WithId<DbChat> | null> {
+    const chat = await this.chatCollection.findOne({ id: chatId })
+
+    return chat
+  }
+
+  // async fetchChats (): Promise<void> {
+  //   const chatsIds = await this.fetchChatList()
+  //   console.log('Fetched', chatsIds)
+  //   for (let i = 0; i < chatsIds.length; i++) {
+  //     const chatId = chatsIds[i]
+  //     await this.fetchChat(chatId)
+  //     console.log(`Chat ${i + 1} of ${chatsIds.length} fetched`)
+  //   }
+  // }
 }
 
 export default ChatList
