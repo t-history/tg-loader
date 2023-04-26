@@ -78,7 +78,7 @@ class ChatList {
       return 'inserted'
     }
 
-    if (existingChat.status === 'idle') {
+    if (existingChat.status === 'queued') {
       await this.updateChatInDb(existingChat, chat)
       return 'updated'
     }

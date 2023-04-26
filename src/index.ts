@@ -66,7 +66,7 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
 
   let quite = false
 
-  if (depth === 'sync' && toMessageId != null) {
+  if (toMessageId != null) {
     for await (const message of messageChunk) {
       if (message == null) break
       if (message.id <= toMessageId) {
@@ -153,6 +153,10 @@ async function main (): Promise<void> {
 
   await tgClient.login()
   await dbClient.connect('thistory')
+
+  // hack for reset status if server was down on in progress
+  const chatListInstance = new ChatList(tgClient, dbClient)
+  await chatListInstance.chatCollection.updateMany({}, { $set: { status: 'idle' } })
 
   // const chatListInstance = new ChatList(tgClient, dbClient)
   // const chatIds = await chatListInstance.fetchChatList()
