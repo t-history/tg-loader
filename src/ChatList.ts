@@ -20,6 +20,14 @@ interface ChatList {
   tgClient: TgClient
 }
 
+type OmitExcessFields<T> = {
+  [K in keyof T as Exclude<K,
+  'last_message' |
+  'last_read_inbox_message_id' |
+  'last_read_outbox_message_id'
+  >]: T[K]
+}
+
 class ChatList {
   constructor (tgClient: TgClient, dbClient: Database) {
     if (dbClient.db == null) {
@@ -35,6 +43,12 @@ class ChatList {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const additionalFields: additionalChatFields = { history, hash, status, lastUpdate } // for type checking
     return chat
+  }
+
+  getChatWithoutExcessFields (chat: Chat): OmitExcessFields<Chat> {
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const { last_message, last_read_inbox_message_id, last_read_outbox_message_id, ...strippedChat } = chat
+    return strippedChat
   }
 
   async fetchChatList (): Promise<number[]> {
@@ -74,7 +88,8 @@ class ChatList {
   }
 
   async updateChatInDb (existingChat: WithId<DbChat>, chat: Chat): Promise<void> {
-    const newHash = calculateHash(chat)
+    const strippedChat = this.getChatWithoutExcessFields(chat)
+    const newHash = calculateHash(strippedChat)
     if (existingChat.hash === newHash) return
 
     const copyExistingChat = this.stripDbFields(existingChat)
@@ -104,7 +119,8 @@ class ChatList {
   }
 
   async insertChatToDb (chat: Chat): Promise<void> {
-    const hash = calculateHash(chat)
+    const strippedChat = this.getChatWithoutExcessFields(chat)
+    const hash = calculateHash(strippedChat)
     const dbChat: DbChat = {
       ...chat,
       hash,
