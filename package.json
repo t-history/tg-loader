@@ -1,16 +1,19 @@
 {
-  "name": "tg-history",
+  "name": "tg-loader",
   "version": "1.0.0",
-  "description": "This npm package allows for regular creation of dumps of all Telegram chats using the Telegram Bot API, storing them in JSON format, and enabling automatic dumps at specified intervals, useful for archiving or analyzing messages, or for creating backups in case of data loss",
+  "description": "This is a module for loading data from telegram",
   "scripts": {
     "start:dev": "npx nodemon",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rimraf ./build && tsc",
-    "start": "npm run build && node build/index.js",
+    "start:prod": "node build/index.js",
     "lint": "eslint . --ext .ts"
   },
   "author": "Mois",
-  "license": "ISC",
+  "license": "MIT",
+  "publishConfig": {
+    "@t-history:registry": "https://npm.pkg.github.com"
+  },
   "dependencies": {
     "@types/deep-diff": "^1.0.2",
     "bullmq": "^3.12.0",

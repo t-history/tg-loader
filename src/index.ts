@@ -209,6 +209,16 @@ async function main (): Promise<void> {
   await chatQueue.add('getChatList', {})
   await chatQueue.add('getChatList', {}, { repeat: { every: 1000 * 60 * 5 } })
 
+  if (dbClient.db != null) {
+    await dbClient.db.collection('messages').createIndex({ chatId: 1 })
+    await dbClient.db.collection('messages').createIndex({ chatId: 1, id: 1 })
+    await dbClient.db.collection('messages').createIndex({ id: 1 })
+
+    await dbClient.db.collection('chats').createIndex({ id: 1 })
+    await dbClient.db.collection('chats').createIndex({ status: 1 })
+  }
+  // add index for chatId
+
   // const chatListInstance = new ChatList(tgClient, dbClient)
   // const chatIds = await chatListInstance.fetchChatList()
 
