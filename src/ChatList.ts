@@ -6,10 +6,12 @@ import type Database from './db'
 import { copyObj, calculateHash } from './utils'
 import { diff } from 'deep-diff'
 
+type ChatStatus = 'queued' | 'in_progress' | 'idle'
+
 export interface additionalChatFields {
   history: any[]
   hash: string
-  status: 'queued' | 'in_progress' | 'idle'
+  status: ChatStatus
   lastUpdate: Date
 }
 
@@ -70,6 +72,10 @@ class ChatList {
     return chat
   }
 
+  async updateChatStatus (id: number, status: ChatStatus): Promise<void> {
+    await this.chatCollection.updateOne({ id }, { $set: { status } })
+  }
+
   async writeChatToDb (chat: Chat): Promise<string> {
     const existingChat = await this.chatCollection.findOne({ id: chat.id })
 
@@ -116,6 +122,22 @@ class ChatList {
     }
 
     await this.chatCollection.updateOne({ _id: existingChat._id }, { $set: dbChat })
+  }
+
+  // async getIdleChatList (): Promise<number[]> {
+  //   const idleChats = await this.chatCollection.find({ status: 'idle' }).toArray()
+  //   const idleChatsId = idleChats.map(chat => chat.id)
+  //   return idleChatsId
+  // }
+
+  async getNotIdleChatList (): Promise<number[]> {
+    const idleChats = await this.chatCollection.find({ status: { $ne: 'idle' } }).toArray()
+    const idleChatsId = idleChats.map(chat => chat.id)
+    return idleChatsId
+  }
+
+  async setChatStatus (id: number, status: ChatStatus): Promise<void> {
+    await this.chatCollection.updateOne({ id }, { $set: { status } })
   }
 
   async insertChatToDb (chat: Chat): Promise<void> {

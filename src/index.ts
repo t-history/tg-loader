@@ -27,33 +27,8 @@ const connection = new IORedis({
   maxRetriesPerRequest: null
 })
 
+// queue for chat history
 const queue = new Queue('chatHistoryQueue', { connection })
-
-const getChatJob = async (job: ChatListJob): Promise<void> => {
-  const { chatId, depth }: ChatListJob = job
-
-  const chatListInstance = new ChatList(tgClient, dbClient)
-  const oldChat = await chatListInstance.findChatById(chatId)
-  const chat = await chatListInstance.fetchChat(chatId)
-
-  if (chat.type._ !== 'chatTypePrivate') return
-  if (chat.last_message == null) return
-
-  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
-  await chatHistoryInstance.writeMassageToDb(chat.last_message)
-
-  const messageJob: MessagesJob = {
-    chatId,
-    fromMessageId: chat.last_message.id ?? 0,
-    depth
-  }
-
-  if (depth === 'sync') {
-    messageJob.toMessageId = oldChat?.last_message?.id ?? 0
-  }
-
-  await queue.add('getMessages', messageJob)
-}
 
 const getMessagesJob = async (job: MessagesJob): Promise<void> => {
   const { chatId, depth, fromMessageId, toMessageId }: MessagesJob = job
@@ -120,11 +95,6 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
 }
 
 const worker = new Worker('chatHistoryQueue', async (job: Job) => {
-  if (job.name === 'getChat') {
-    const chatListJob: ChatListJob = job.data
-    await getChatJob(chatListJob)
-  }
-
   if (job.name === 'getMessages') {
     const messagesJob: MessagesJob = job.data
     await getMessagesJob(messagesJob)
@@ -147,6 +117,84 @@ worker.on('completed', (job: Job) => {
   }
 })
 
+// queue for chat list
+const chatQueue = new Queue('chatQueue', { connection })
+
+const getChatListJob = async (): Promise<void> => {
+  const chatListInstance = new ChatList(tgClient, dbClient)
+  const chatIds = await chatListInstance.fetchChatList()
+  const notIdleChatIds = await chatListInstance.getNotIdleChatList()
+  const chatIdsToSync = chatIds.filter((chatId) => !notIdleChatIds.includes(chatId))
+
+  for (const chatId of chatIdsToSync) {
+    const chatListJob: ChatListJob = {
+      chatId,
+      depth: 'sync'
+    }
+
+    await chatListInstance.updateChatStatus(chatId, 'queued')
+    await chatQueue.add('getChat', chatListJob)
+  }
+}
+
+const getChatJob = async (job: ChatListJob): Promise<void> => {
+  const { chatId, depth }: ChatListJob = job
+
+  const chatListInstance = new ChatList(tgClient, dbClient)
+  const oldChat = await chatListInstance.findChatById(chatId)
+  const chat = await chatListInstance.fetchChat(chatId)
+
+  if (
+    chat.type._ !== 'chatTypePrivate' ||
+    chat.last_message == null ||
+    chat.last_message.id === oldChat?.last_message?.id
+  ) {
+    await chatListInstance.updateChatStatus(chatId, 'idle')
+    return
+  }
+
+  const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
+  await chatHistoryInstance.writeMassageToDb(chat.last_message)
+
+  const messageJob: MessagesJob = {
+    chatId,
+    fromMessageId: chat.last_message.id ?? 0,
+    depth
+  }
+
+  if (depth === 'sync') {
+    messageJob.toMessageId = oldChat?.last_message?.id ?? 0
+  }
+
+  await queue.add('getMessages', messageJob)
+}
+
+const chatWorker = new Worker('chatQueue', async (job: Job) => {
+  if (job.name === 'getChat') {
+    const chatListJob: ChatListJob = job.data
+    await getChatJob(chatListJob)
+  }
+
+  if (job.name === 'getChatList') {
+    await getChatListJob()
+  }
+}, {
+  connection,
+  limiter: {
+    max: 20,
+    duration: 1000
+  },
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK * 2
+  }
+})
+
+chatWorker.on('completed', (job: Job) => {
+  if (job.id != null) {
+    console.log(`Job ${job.name}:${job.id} completed`)
+  }
+})
+
 async function main (): Promise<void> {
   await connection.flushdb()
   console.log('Queue flushed')
@@ -157,6 +205,9 @@ async function main (): Promise<void> {
   // hack for reset status if server was down on in progress
   const chatListInstance = new ChatList(tgClient, dbClient)
   await chatListInstance.chatCollection.updateMany({}, { $set: { status: 'idle' } })
+
+  await chatQueue.add('getChatList', {})
+  await chatQueue.add('getChatList', {}, { repeat: { every: 1000 * 60 * 5 } })
 
   // const chatListInstance = new ChatList(tgClient, dbClient)
   // const chatIds = await chatListInstance.fetchChatList()
