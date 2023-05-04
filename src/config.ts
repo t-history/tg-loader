@@ -10,8 +10,8 @@ interface Config {
   apiHash: string
   redisPort: number
   redisHost: string
-  redisUser: string
-  redisPass: string
+  redisUser: string | null
+  redisPass: string | null
   mongoConnection: string
 }
 
@@ -24,15 +24,15 @@ const apiHash = process.env.API_HASH
 const apiId = parseEnvNumber(process.env.API_ID)
 const redisPort = parseEnvNumber(process.env.REDIS_PORT)
 const redisHost = process.env.REDIS_HOST
-const redisUser = process.env.REDIS_USER
-const redisPass = process.env.REDIS_PASS
+const redisUser = process.env.REDIS_USER ?? null
+const redisPass = process.env.REDIS_PASS ?? null
 
 if (apiId === undefined ||
   apiHash === undefined ||
   redisPort === undefined ||
   redisHost === undefined ||
-  redisUser === undefined ||
-  redisPass === undefined ||
+  // redisUser === undefined ||
+  // redisPass === undefined ||
   mongoConnection === undefined
 ) {
   throw new Error(
