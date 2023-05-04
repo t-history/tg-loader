@@ -213,12 +213,12 @@ async function main (): Promise<void> {
   await connection.flushdb()
   console.log('Queue flushed')
 
-  await tgClient.login()
   await dbClient.connect('thistory')
 
   // hack for reset status if server was down on in progress
-  const chatListInstance = new ChatList(tgClient, dbClient)
-  await chatListInstance.chatCollection.updateMany({}, { $set: { status: 'idle' } })
+  if (dbClient.db !== undefined) {
+    await dbClient.db.collection('chats').updateMany({}, { $set: { status: 'idle' } })
+  }
 
   await chatQueue.add('getChatList', {})
   await chatQueue.add('getChatList', {}, { repeat: { every: 1000 * 60 * 5 } })
@@ -255,6 +255,4 @@ async function main (): Promise<void> {
   // })
 }
 
-main().catch((err: Error) => {
-  console.log(err)
-})
+main().catch(console.log)

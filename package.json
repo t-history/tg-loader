@@ -23,6 +23,7 @@
     "ioredis": "^5.3.1",
     "mongodb": "^5.3.0",
     "prebuilt-tdlib": "^0.1008012.0",
+    "qrcode-terminal": "^0.12.0",
     "tdl": "^7.2.0",
     "tdl-tdlib-addon": "^1.2.2",
     "tdlib-types": "^0.1001008.1"
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@types/mongodb": "^4.0.7",
     "@types/node": "^18.15.10",
+    "@types/qrcode-terminal": "^0.12.0",
     "@typescript-eslint/eslint-plugin": "^5.57.0",
     "@typescript-eslint/parser": "^5.57.0",
     "eslint": "^8.37.0",
