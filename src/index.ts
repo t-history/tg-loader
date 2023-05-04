@@ -5,7 +5,7 @@ import ChatHistory from './ChatHistory'
 import ChatList from './ChatList'
 
 import { Queue, Worker, type Job, MetricsTime } from 'bullmq'
-import IORedis from 'ioredis'
+import IORedis, { type RedisOptions } from 'ioredis'
 
 const dbClient = new Database(config.mongoConnection)
 
@@ -19,11 +19,25 @@ interface MessagesJob extends ChatListJob {
   toMessageId?: number
 }
 
+const redisConfig: RedisOptions = {
+  port: config.redisPort,
+  host: config.redisHost,
+  maxRetriesPerRequest: null
+}
+
+if (config.redisUser !== null) {
+  redisConfig.username = config.redisUser
+}
+
+if (config.redisPass !== null) {
+  redisConfig.password = config.redisPass
+}
+
 const connection = new IORedis({
   port: config.redisPort,
   host: config.redisHost,
-  username: config.redisUser,
-  password: config.redisPass,
+  // username: config.redisUser,
+  // password: config.redisPass,
   maxRetriesPerRequest: null
 })
 
