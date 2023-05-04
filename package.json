@@ -22,6 +22,7 @@
     "dotenv": "^16.0.3",
     "ioredis": "^5.3.1",
     "mongodb": "^5.3.0",
+    "prebuilt-tdlib": "^0.1008012.0",
     "tdl": "^7.2.0",
     "tdl-tdlib-addon": "^1.2.2",
     "tdlib-types": "^0.1001008.1"
