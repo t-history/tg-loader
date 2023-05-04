@@ -9,6 +9,8 @@ const ext = platform() === 'darwin' ? '.dylib' : platform() === 'win32' ? '.dll'
 const connection = process.arch === 'arm64'
   ? path.join(__dirname, `../bin/libtdjson${ext}`)
   : getTdjson()
+
+console.log('Using', connection)
 const tdl = new TDLib(connection)
 
 const client = new Client(tdl, {
