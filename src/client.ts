@@ -5,7 +5,8 @@ import { TDLib } from 'tdl-tdlib-addon'
 import config from './config'
 
 const ext = platform() === 'darwin' ? '.dylib' : platform() === 'win32' ? '.dll' : '.so'
-const tdl = platform() === 'darwin' ? new TDLib(path.join(__dirname, `bin/libtdjson${ext}`)) : new TDLib()
+const connection = path.join(__dirname, `../bin/libtdjson${ext}`)
+const tdl = platform() === 'darwin' ? new TDLib(connection) : new TDLib()
 
 const client = new Client(tdl, {
   apiId: config.apiId,
