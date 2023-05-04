@@ -1,9 +1,8 @@
-FROM node:18
+FROM node:18-alpine
 
 WORKDIR /app
 
-RUN apt update && apt install -y \
-    python
+RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
 
