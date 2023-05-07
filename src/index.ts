@@ -84,7 +84,13 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
     throw new Error('Unknown depth')
   }
 
+  if (messageChunk.length === 0) {
+    console.log(`Chat ${chatId} is synced`)
+    quite = true
+  }
+
   if (quite) {
+    console.log(`Chat ${chatId} is synced`)
     // TODO rewrite to ChatItem class
     const chatListInstance = new ChatList(tgClient, dbClient)
     const chat = await chatListInstance.findChatById(chatId)
@@ -94,18 +100,24 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
     return
   }
 
+  if (messageChunk.length === 0) {
+    console.log(`Chat ${chatId} is synced`)
+  }
+
   const oldestMessage = messageChunk[messageChunk.length - 1]
 
-  if (oldestMessage != null) {
-    const messageJob: MessagesJob = {
-      chatId,
-      fromMessageId: oldestMessage.id,
-      toMessageId: toMessageId ?? undefined,
-      depth
-    }
-
-    await queue.add('getMessages', messageJob)
+  if (oldestMessage == null) {
+    throw new Error('Oldest message is null')
   }
+
+  const messageJob: MessagesJob = {
+    chatId,
+    fromMessageId: oldestMessage.id,
+    toMessageId: toMessageId ?? undefined,
+    depth
+  }
+
+  await queue.add('getMessages', messageJob)
 }
 
 const worker = new Worker('chatHistoryQueue', async (job: Job) => {
@@ -161,7 +173,7 @@ const getChatJob = async (job: ChatListJob): Promise<void> => {
   if (
     chat.type._ !== 'chatTypePrivate' ||
     chat.last_message == null ||
-    chat.last_message.id === oldChat?.last_message?.id
+    (chat.last_message.id === oldChat?.last_message?.id && depth === 'sync')
   ) {
     await chatListInstance.updateChatStatus(chatId, 'idle')
     return
