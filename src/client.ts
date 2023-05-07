@@ -36,7 +36,17 @@ client.on('update', (update: Update) => {
       qrcode.generate(qrString, { small: true }, (qrCode: string) => {
         console.log(qrCode)
       })
-      console.log('token', authState.link)
+    }
+
+    if (authState === 'authorizationStateWaitPassword') {
+      console.log('Enter password: ')
+      process.stdin.on('data', (data: Buffer) => {
+        const password = data.toString().trim()
+        client.invoke({
+          _: 'checkAuthenticationPassword',
+          password
+        }).then(console.log).catch(console.error)
+      })
     }
 
     if (authState === 'authorizationStateReady') {
