@@ -46,6 +46,21 @@ class ChatList {
     return chat
   }
 
+  async writeExistChatMessageIds (chatId: number, ids: number[], firstNewId: number): Promise<void> {
+    await this.chatCollection.updateOne({ id: chatId }, { $set: { th_old_message_ids: ids, th_new_message_ids: [firstNewId] } })
+  }
+
+  async pushNewChatMessageIds (chatId: number, ids: number[]): Promise<void> {
+    await this.chatCollection.updateOne({ id: chatId }, { $push: { th_new_message_ids: { $each: ids } } })
+  }
+
+  async getDiffChatMessageIds (chatId: number): Promise<number[]> {
+    return await this.chatCollection.aggregate([
+      { $match: { id: chatId } },
+      { $project: { diff: { $setDifference: ['$th_old_message_ids', '$th_new_message_ids'] } } }
+    ]).toArray().then(([{ diff }]) => diff)
+  }
+
   getChatWithoutExcessFields (chat: Chat): OmitExcessFields<Chat> {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     const { last_message, ...strippedChat } = chat

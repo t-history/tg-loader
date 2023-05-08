@@ -6,6 +6,7 @@ import { type Collection, type WithId } from 'mongodb'
 import { diff } from 'deep-diff'
 import { calculateHash, copyObj } from './utils'
 
+// th_removed excluded from with interface
 export interface additionalMessageFields {
   th_history: any[]
   th_hash: string
@@ -38,6 +39,15 @@ class ChatHistory {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const additionalFields: additionalMessageFields = { th_history, th_hash, th_last_update } // for type check
     return message as Message
+  }
+
+  async getExistMessageIds (): Promise<number[]> {
+    const existMessages = await this.collection.find({ chat_id: this.chatId }).project({ id: 1 }).toArray()
+    return existMessages.map(message => message.id)
+  }
+
+  async markMessagesAsRemoved (ids: number[]): Promise<void> {
+    await this.collection.updateMany({ id: { $in: ids } }, { $set: { th_removed: true } })
   }
 
   async updateMessageInDb (existingMessage: WithId<DbMessage>, message: Message): Promise<void> {
@@ -106,11 +116,19 @@ class ChatHistory {
     return messageChunk.messages
   }
 
-  async writeMessageChunk (messages: Array<Message | undefined>): Promise<void> {
-    for await (const message of messages) {
-      if (message == null) break
-      await this.writeMassageToDb(message)
-    }
+  async writeMessageChunk (messages: Array<Message | undefined>): Promise<number[]> {
+    const onlyMessages = messages.filter(message => message !== undefined) as Message[]
+    const ids = onlyMessages.map(message => message.id)
+
+    const writePromise = messages
+      .filter(message => message !== undefined)
+      .map(async message => {
+        return await this.writeMassageToDb(message as Message)
+      })
+
+    await Promise.all(writePromise)
+
+    return ids
   }
 
   async fetchMessageChunk (fromMessageId: number): Promise<number | null> {
