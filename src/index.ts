@@ -14,7 +14,8 @@ interface ChatListJob {
   depth: 'full' | 'sync' | number
 }
 
-interface MessagesJob extends ChatListJob {
+interface MessagesJob {
+  chatId: number
   fromMessageId: number
   toMessageId?: number
 }
@@ -45,49 +46,26 @@ const connection = new IORedis({
 const queue = new Queue('chatHistoryQueue', { connection })
 
 const getMessagesJob = async (job: MessagesJob): Promise<void> => {
-  const { chatId, depth, fromMessageId, toMessageId }: MessagesJob = job
+  const { chatId, fromMessageId, toMessageId }: MessagesJob = job
   const chatHistoryInstance = new ChatHistory(tgClient, dbClient, chatId)
-  const unixtime = Math.floor(Date.now() / 1000)
 
   const messageChunk = await chatHistoryInstance.requestMessageChunk(
     fromMessageId
   )
 
-  let quite = false
+  const messageChunkHasOlder = toMessageId != null && messageChunk.some((message) => {
+    return message != null && message.id < fromMessageId
+  })
 
-  if (toMessageId != null) {
-    for await (const message of messageChunk) {
-      if (message == null) break
-      if (message.id <= toMessageId) {
-        quite = true
-        continue
-      }
+  const messageChunkToDb = messageChunkHasOlder
+    ? messageChunk.filter((message) => {
+      return message != null && message.id > toMessageId
+    })
+    : messageChunk
 
-      const res = await chatHistoryInstance.writeMassageToDb(message)
-      if (res === 'updated') {
-        throw new Error('Message updated on sync')
-      }
-    }
-  } else if (depth === 'full' || depth === 'sync') { // if toMessageId is null
-    await chatHistoryInstance.writeMessageChunk(messageChunk)
-  } else if (typeof depth === 'number') {
-    for await (const message of messageChunk) {
-      if (message == null) break
-      if (message.date <= unixtime - depth) {
-        quite = true
-        continue
-      }
+  const quite = messageChunkToDb.length === 0 || messageChunkHasOlder
 
-      await chatHistoryInstance.writeMassageToDb(message)
-    }
-  } else {
-    throw new Error('Unknown depth')
-  }
-
-  if (messageChunk.length === 0) {
-    console.log(`Chat ${chatId} is synced`)
-    quite = true
-  }
+  await chatHistoryInstance.writeMessageChunk(messageChunkToDb)
 
   if (quite) {
     console.log(`Chat ${chatId} is synced`)
@@ -100,10 +78,6 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
     return
   }
 
-  if (messageChunk.length === 0) {
-    console.log(`Chat ${chatId} is synced`)
-  }
-
   const oldestMessage = messageChunk[messageChunk.length - 1]
 
   if (oldestMessage == null) {
@@ -113,8 +87,7 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
   const messageJob: MessagesJob = {
     chatId,
     fromMessageId: oldestMessage.id,
-    toMessageId: toMessageId ?? undefined,
-    depth
+    toMessageId: toMessageId ?? undefined
   }
 
   await queue.add('getMessages', messageJob)
@@ -184,12 +157,16 @@ const getChatJob = async (job: ChatListJob): Promise<void> => {
 
   const messageJob: MessagesJob = {
     chatId,
-    fromMessageId: chat.last_message.id ?? 0,
-    depth
+    fromMessageId: chat.last_message.id ?? 0
   }
 
   if (depth === 'sync') {
     messageJob.toMessageId = oldChat?.last_message?.id ?? 0
+  }
+
+  if (typeof depth === 'number') {
+    // find message by date and set toMessageId
+    // messageJob.toMessageId =
   }
 
   await queue.add('getMessages', messageJob)
