@@ -9,10 +9,10 @@ import { diff } from 'deep-diff'
 type ChatStatus = 'queued' | 'in_progress' | 'idle'
 
 export interface additionalChatFields {
-  history: any[]
-  hash: string
-  status: ChatStatus
-  lastUpdate: Date
+  th_history: any[]
+  th_hash: string
+  th_status: ChatStatus
+  th_last_update: Date
 }
 
 export type DbChat = Chat & additionalChatFields
@@ -24,9 +24,7 @@ interface ChatList {
 
 type OmitExcessFields<T> = {
   [K in keyof T as Exclude<K,
-  'last_message' |
-  'last_read_inbox_message_id' |
-  'last_read_outbox_message_id'
+  'last_message'
   >]: T[K]
 }
 
@@ -40,16 +38,17 @@ class ChatList {
   }
 
   stripDbFields (dbChat: WithId<DbChat>): Chat {
-    const { _id, history, hash, status, lastUpdate, ...chat } = dbChat
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const { _id, th_history, th_hash, th_status, th_last_update, ...chat } = dbChat
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const additionalFields: additionalChatFields = { history, hash, status, lastUpdate } // for type checking
+    const additionalFields: additionalChatFields = { th_history, th_hash, th_status, th_last_update } // for type checking
     return chat
   }
 
   getChatWithoutExcessFields (chat: Chat): OmitExcessFields<Chat> {
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    const { last_message, last_read_inbox_message_id, last_read_outbox_message_id, ...strippedChat } = chat
+    const { last_message, ...strippedChat } = chat
     return strippedChat
   }
 
@@ -73,7 +72,7 @@ class ChatList {
   }
 
   async updateChatStatus (id: number, status: ChatStatus): Promise<void> {
-    await this.chatCollection.updateOne({ id }, { $set: { status } })
+    await this.chatCollection.updateOne({ id }, { $set: { th_status: status } })
   }
 
   async writeChatToDb (chat: Chat): Promise<string> {
@@ -84,7 +83,7 @@ class ChatList {
       return 'inserted'
     }
 
-    if (existingChat.status === 'queued') {
+    if (existingChat.th_status === 'queued') {
       await this.updateChatInDb(existingChat, chat)
       return 'updated'
     }
@@ -96,18 +95,18 @@ class ChatList {
   async updateChatInDb (existingChat: WithId<DbChat>, chat: Chat): Promise<void> {
     const strippedChat = this.getChatWithoutExcessFields(chat)
     const newHash = calculateHash(strippedChat)
-    if (existingChat.hash === newHash) return
+    if (existingChat.th_hash === newHash) return
 
     const copyExistingChat = this.stripDbFields(existingChat)
     const diffChats = diff(copyExistingChat, chat)
     const updateDate = new Date()
-    const history = existingChat.history
+    const history = existingChat.th_history
 
     if (diffChats !== undefined) {
       history.push({
         diff: copyObj(diffChats),
         dateInterval: {
-          start: existingChat.lastUpdate,
+          start: existingChat.th_last_update,
           end: updateDate
         }
       })
@@ -115,10 +114,10 @@ class ChatList {
 
     const dbChat: DbChat = {
       ...chat,
-      hash: newHash,
-      history,
-      status: 'in_progress',
-      lastUpdate: updateDate
+      th_hash: newHash,
+      th_history: history,
+      th_status: 'in_progress',
+      th_last_update: updateDate
     }
 
     await this.chatCollection.updateOne({ _id: existingChat._id }, { $set: dbChat })
@@ -131,13 +130,13 @@ class ChatList {
   // }
 
   async getNotIdleChatList (): Promise<number[]> {
-    const idleChats = await this.chatCollection.find({ status: { $ne: 'idle' } }).toArray()
+    const idleChats = await this.chatCollection.find({ th_status: { $ne: 'idle' } }).toArray()
     const idleChatsId = idleChats.map(chat => chat.id)
     return idleChatsId
   }
 
   async setChatStatus (id: number, status: ChatStatus): Promise<void> {
-    await this.chatCollection.updateOne({ id }, { $set: { status } })
+    await this.chatCollection.updateOne({ id }, { $set: { th_status: status } })
   }
 
   async insertChatToDb (chat: Chat): Promise<void> {
@@ -145,10 +144,10 @@ class ChatList {
     const hash = calculateHash(strippedChat)
     const dbChat: DbChat = {
       ...chat,
-      hash,
-      history: [],
-      status: 'in_progress',
-      lastUpdate: new Date()
+      th_hash: hash,
+      th_history: [],
+      th_status: 'in_progress',
+      th_last_update: new Date()
     }
 
     await this.chatCollection.insertOne(dbChat)

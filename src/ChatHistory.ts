@@ -7,9 +7,9 @@ import { diff } from 'deep-diff'
 import { calculateHash, copyObj } from './utils'
 
 export interface additionalMessageFields {
-  history: any[]
-  hash: string
-  lastUpdate: Date
+  th_history: any[]
+  th_hash: string
+  th_last_update: Date
 }
 
 export type DbMessage = Message & additionalMessageFields
@@ -32,27 +32,28 @@ class ChatHistory {
   }
 
   static stripDbFields (dbMessage: WithId<DbMessage>): Message {
-    const { _id, history, hash, lastUpdate, ...message } = dbMessage
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const { _id, th_history, th_hash, th_last_update, ...message } = dbMessage
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const additionalFields: additionalMessageFields = { history, hash, lastUpdate } // for type check
+    const additionalFields: additionalMessageFields = { th_history, th_hash, th_last_update } // for type check
     return message as Message
   }
 
   async updateMessageInDb (existingMessage: WithId<DbMessage>, message: Message): Promise<void> {
     const newHash = calculateHash(message)
-    if (existingMessage.hash === newHash) return
+    if (existingMessage.th_hash === newHash) return
 
     const copyExistingMessage = ChatHistory.stripDbFields(existingMessage)
     const diffMessages = diff(copyExistingMessage, message)
     const updateDate = new Date()
-    const history = existingMessage.history
+    const history = existingMessage.th_history
 
     if (diffMessages !== undefined) {
       history.push({
         diff: copyObj(diffMessages),
         dateInterval: {
-          start: existingMessage.lastUpdate,
+          start: existingMessage.th_last_update,
           end: updateDate
         }
       })
@@ -60,9 +61,9 @@ class ChatHistory {
 
     const dbMessage: DbMessage = {
       ...message,
-      hash: newHash,
-      history,
-      lastUpdate: updateDate
+      th_hash: newHash,
+      th_history: history,
+      th_last_update: updateDate
     }
 
     await this.collection.updateOne({ _id: existingMessage._id }, { $set: dbMessage })
@@ -72,9 +73,9 @@ class ChatHistory {
     const hash = calculateHash(message)
     const dbMessage: DbMessage = {
       ...message,
-      hash,
-      history: [],
-      lastUpdate: new Date()
+      th_hash: hash,
+      th_history: [],
+      th_last_update: new Date()
     }
     await this.collection.insertOne(dbMessage)
   }

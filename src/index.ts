@@ -95,7 +95,7 @@ const getMessagesJob = async (job: MessagesJob): Promise<void> => {
     const chatListInstance = new ChatList(tgClient, dbClient)
     const chat = await chatListInstance.findChatById(chatId)
     if (chat == null) throw new Error('Chat not found')
-    await chatListInstance.chatCollection.updateOne({ _id: chat._id }, { $set: { status: 'idle' } })
+    await chatListInstance.chatCollection.updateOne({ _id: chat._id }, { $set: { th_status: 'idle' } })
 
     return
   }
@@ -229,7 +229,7 @@ async function main (): Promise<void> {
 
   // hack for reset status if server was down on in progress
   if (dbClient.db !== undefined) {
-    await dbClient.db.collection('chats').updateMany({}, { $set: { status: 'idle' } })
+    await dbClient.db.collection('chats').updateMany({}, { $set: { th_status: 'idle' } })
   }
 
   await chatQueue.add('getChatList', {})
@@ -241,7 +241,7 @@ async function main (): Promise<void> {
     await dbClient.db.collection('messages').createIndex({ id: 1 })
 
     await dbClient.db.collection('chats').createIndex({ id: 1 })
-    await dbClient.db.collection('chats').createIndex({ status: 1 })
+    await dbClient.db.collection('chats').createIndex({ th_status: 1 })
   }
   // add index for chatId
 
