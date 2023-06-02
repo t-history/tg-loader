@@ -220,7 +220,7 @@ async function main (): Promise<void> {
   await connection.flushdb()
   console.log('Queue flushed')
 
-  await dbClient.connect('thistory')
+  await dbClient.connect(config.mongoDbName)
 
   // hack for reset status if server was down on in progress
   if (dbClient.db !== undefined) {

@@ -13,6 +13,7 @@ interface Config {
   redisUser: string | null
   redisPass: string | null
   mongoConnection: string
+  mongoDbName: string
 }
 
 const parseEnvNumber = (value: string | undefined): number | undefined => {
@@ -20,6 +21,7 @@ const parseEnvNumber = (value: string | undefined): number | undefined => {
 }
 
 const mongoConnection = process.env.MONGO_CONNECTION_STRING
+const mongoDbName = process.env.MONGO_DB_NAME
 const apiHash = process.env.API_HASH
 const apiId = parseEnvNumber(process.env.API_ID)
 const redisPort = parseEnvNumber(process.env.REDIS_PORT)
@@ -33,10 +35,11 @@ if (apiId === undefined ||
   redisHost === undefined ||
   // redisUser === undefined ||
   // redisPass === undefined ||
-  mongoConnection === undefined
+  mongoConnection === undefined ||
+  mongoDbName === undefined
 ) {
   throw new Error(
-    'API_ID, API_HASH, REDIS_CONNECTION or MONGO_CONNECTION_STRING is not set'
+    'API_ID, API_HASH, REDIS_CONNECTION, MONGO_DB_NAME or MONGO_CONNECTION_STRING is not set'
   )
 }
 
@@ -51,7 +54,8 @@ const config: Config = {
   redisHost,
   redisPass,
   redisUser,
-  mongoConnection
+  mongoConnection,
+  mongoDbName
 }
 
 export default config
